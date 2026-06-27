@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>互動解密</title>
+    <style>
+        /* 全域設定：防止手機雙擊縮放與反白選取文字 */
+        * {
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* 固定在最上方的提示區塊（觸發解密的感應區） */
+        #top-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            background-color: #ff3333;
+            color: #ffffff;
+            text-align: center;
+            line-height: 60px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* 文字顯示區 */
+        #content-container {
+            margin-top: 60px; /* 留出上方 banner 的空間 */
+            padding: 30px;
+            width: 100%;
+            height: calc(100% - 60px);
+            word-break: break-all;
+            line-height: 1.8;
+            letter-spacing: 2px;
+            font-size: 18px;
+            overflow-y: auto;
+        }
+
+        /* 亂碼的樣式（暗灰色） */
+        .scrambled {
+            color: #333333;
+            transition: color 0.1s ease;
+        }
+
+        /* 明文的樣式（高亮綠字） */
+        .revealed {
+            color: #00ff00; /* 科技綠 */
+            font-weight: bold;
+            text-shadow: 0 0 5px #00ff00;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="top-banner">請用手遮擋該區域</div>
+
+    <div id="content-container">
+        <span id="target-text"></span>
+    </div>
+
+    <script>
+        // 1. 已成功將您的網址改為 CSV 格式綁定於下方
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2j3LVDb-S7EJ8JssqgQHFCwt5H4YzClC8i1M5bwiGUkdA5-sfZqsrWy27aLHQU8-9of0dMsPg8F_x/pub?output=csv';
+
+        const banner = document.getElementById('top-banner');
+        const targetBox = document.getElementById('target-text');
+        
+        let isCovered = false;       // 記錄紅框是否被手遮蓋住
+        
+        // 本地預設文字：如果您的試算表還在讀取或網路慢，先用這串，保證不留黑
+        let currentRealText = "看到這串代表還在讀取喔喔喔喔喔喔喔";    
+        let currentScrambledText = ""; 
+
+        const charsPool = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+=-[]{}|;:,./<>?';
+
+        // 生成專屬亂碼的函式
+        function makeScrambled(sourceText) {
+            let tempScrambled = "";
+            for (let i = 0; i < sourceText.length; i++) {
+                if (sourceText[i] === '\n') {
+                    tempScrambled += '\n';
+                } else if (sourceText[i] === ' ') {
+                    tempScrambled += ' ';
+                } else {
+                    tempScrambled += charsPool[Math.floor(Math.random() * charsPool.length)];
+                }
+            }
+            return tempScrambled;
+        }
+
+        // 2. 從雲端實時抓取最新文本
+        async function fetchSecretData() {
+            try {
+                const response = await fetch(`${CSV_URL}&cachebust=${Date.now()}`);
+                if (!response.ok) throw new Error('網路回應不成功');
+                
+                let text = await response.text();
+                
+                // 清理掉 CSV 兩旁的雙引號，並處理換行
+                let cleanedText = text.replace(/^"|"$/g, '').trim();
+                cleanedText = cleanedText.replace(/\\n/g, '\n');
+                
+                // 只有在真的抓到有實體內容的字串時，才覆蓋掉舊資料
+                if (cleanedText && cleanedText.length > 0 && currentRealText !== cleanedText) {
+                    currentRealText = cleanedText;
+                    currentScrambledText = makeScrambled(currentRealText);
+                    updateDisplay();
+                }
+            } catch (error) {
+                console.error('資料載入失敗，維持目前文字:', error);
+            }
+        }
+
+        // 3. 畫面更新邏輯
+        function updateDisplay() {
+            // 如果連初始亂碼都還沒生成，先幫預設文字生成一次
+            if (!currentScrambledText) {
+                currentScrambledText = makeScrambled(currentRealText);
+            }
+
+            if (isCovered) {
+                targetBox.innerText = currentRealText;
+                targetBox.className = "revealed";
+            } else {
+                targetBox.innerText = currentScrambledText;
+                targetBox.className = "scrambled";
+            }
+        }
+
+        // 4. 事件監聽：手按住紅框（模擬遮擋）與放開
+
+        // --- 行動裝置觸控 ---
+        banner.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isCovered = true;
+            updateDisplay(); 
+        }, { passive: false });
+
+        banner.addEventListener('touchend', () => {
+            isCovered = false;
+            updateDisplay(); 
+        });
+
+        // --- 電腦版滑鼠測試 ---
+        banner.addEventListener('mousedown', () => {
+            isCovered = true;
+            updateDisplay();
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isCovered) {
+                isCovered = false;
+                updateDisplay();
+            }
+        });
+
+        // 啟動初始化
+        updateDisplay(); // 先用本地預設文字渲染，保證一開頁面就有東西！
+        fetchSecretData(); // 背景偷偷去撈雲端
+
+        // 每 5 秒自動跟 Google 試算表同步一次
+        setInterval(fetchSecretData, 5000);
+    </script>
+</body>
+</html>
